@@ -1,4 +1,4 @@
-package redis.client.jedis;
+package redis.clients.jedis;
 
 import java.util.Iterator;
 import java.util.List;
@@ -7,20 +7,19 @@ import org.apache.commons.pool.BasePoolableObjectFactory;
 import org.apache.commons.pool.PoolableObjectFactory;
 import org.apache.commons.pool.impl.GenericObjectPool;
 
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisShardInfo;
 import redis.clients.jedis.exceptions.JedisConnectionException;
 import redis.clients.jedis.exceptions.JedisException;
 import redis.clients.util.Pool;
 
 public class RoundRobinPool extends Pool<Jedis> {
     private GenericObjectPool<Jedis> internalPool;
+    private RoundRobinFactory roundRobinFactory;
 
     public RoundRobinPool(final GenericObjectPool.Config poolConfig, String masterIP, int masterPort,
             String masterPassword, List<JedisShardInfo> shards) {
         super(poolConfig, null);
-        this.internalPool = new GenericObjectPool(new RoundRobinFactory(shards, masterIP, masterPort, masterPassword),
-                poolConfig);
+        roundRobinFactory = new RoundRobinFactory(shards, masterIP, masterPort, masterPassword);
+        this.internalPool = new GenericObjectPool(roundRobinFactory, poolConfig);
         internalPool.setLifo(false);
         internalPool.setMaxWait(100);
         initializePool();
@@ -31,7 +30,7 @@ public class RoundRobinPool extends Pool<Jedis> {
     }
 
     private void initializePool() {
-        for (int i = RoundRobinFactory.shards.size(); i > 0; i--)
+        for (int i = roundRobinFactory.shards.size(); i > 0; i--)
             try {
                 internalPool.addObject();
             } catch (Exception e) {
@@ -44,9 +43,9 @@ public class RoundRobinPool extends Pool<Jedis> {
             // RoundRobinFactory.makeSlaveOfMaster(i, RoundRobinFactory.masterIP,
             // RoundRobinFactory.masterPort,
             // RoundRobinFactory.masterPassword);
-            RoundRobinFactory.shards.add(i);
+            roundRobinFactory.shards.add(i);
         }
-        RoundRobinFactory.shardIterator = RoundRobinFactory.shards.iterator();
+        roundRobinFactory.shardIterator = roundRobinFactory.shards.iterator();
         // internalPool.addObject();
         initializePool();
     }
@@ -66,8 +65,6 @@ public class RoundRobinPool extends Pool<Jedis> {
     @SuppressWarnings("unchecked")
     public Jedis getResource() {
         try {
-            System.out.println("getNumIdle :: " + internalPool.getNumIdle() + "/" + internalPool.getMaxIdle());
-            System.out.println("getNumActive :: " + internalPool.getNumActive() + "/" + internalPool.getMaxActive());
             return (Jedis) internalPool.borrowObject();
         } catch (Exception e) {
             throw new JedisConnectionException(
@@ -128,13 +125,13 @@ public class RoundRobinPool extends Pool<Jedis> {
         internalPool.setTestOnReturn(stor);
     }
 
-    private static class RoundRobinFactory extends BasePoolableObjectFactory {
-        private static List<JedisShardInfo> shards; // TODO - have checked if setting these 2 fields
-                                                    // static is ok
-        private static Iterator<JedisShardInfo> shardIterator;
-        private static String masterIP;
-        private static int masterPort;
-        private static String masterPassword;
+    private class RoundRobinFactory extends BasePoolableObjectFactory {
+        private List<JedisShardInfo> shards; // TODO - have checked if setting these 2 fields
+                                             // static is ok
+        private Iterator<JedisShardInfo> shardIterator;
+        private String masterIP;
+        private int masterPort;
+        private String masterPassword;
 
         public void addSlave(JedisShardInfo jsi) {
             shards.add(jsi);
@@ -154,11 +151,11 @@ public class RoundRobinPool extends Pool<Jedis> {
             this.shardIterator = this.shards.iterator();
         }
 
-        public static void makeSlaveOfMaster(JedisShardInfo s, String masterIP, int masterPort, String masterPasswort) {
+        public void makeSlaveOfMaster(JedisShardInfo s, String masterIP, int masterPort, String masterPasswort) {
             Jedis temp = s.createResource();
             temp.connect();
             temp.auth(masterPasswort);
-            temp.slaveof(masterIP, masterPort);
+            // temp.slaveof(masterIP, masterPort);
             temp.disconnect();
         }
 
