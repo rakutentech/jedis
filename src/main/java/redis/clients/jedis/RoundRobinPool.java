@@ -62,6 +62,14 @@ public class RoundRobinPool extends Pool<Jedis> {
         internalPool.setMaxIdle(maxIdle);
     }
 
+    public int getNumActive() {
+        return internalPool.getNumActive();
+    }
+
+    public int getNumIdle() {
+        return internalPool.getNumIdle();
+    }
+
     @SuppressWarnings("unchecked")
     public Jedis getResource() {
         try {
